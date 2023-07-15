@@ -384,8 +384,8 @@ class Tensor:
     return ret if keepdim else ret.reshape(shape=shape)
 
   def sum(self, axis=None, keepdim=False): return self._reduce(mlops.Sum, axis, keepdim)
-  def max(self, axis=None, keepdim=False): return self._reduce(mlops.Max, axis, keepdim)
   def min(self, axis=None, keepdim=False): return -((-self).max(axis=axis, keepdim=keepdim))
+  def max(self, axis=None, keepdim=False): return Tensor(np.array([np.float32('nan')])) if self.is_nan(self.numpy()).any() else self._reduce(mlops.Max, axis, keepdim)
 
   def mean(self, axis=None, keepdim=False):
     out = self.sum(axis=axis, keepdim=keepdim)
@@ -649,6 +649,8 @@ class Tensor:
   def element_size(self) -> int: return self.dtype.itemsize
   def nbytes(self) -> int: return self.numel() * self.element_size()
   def is_floating_point(self) -> bool: return dtypes.is_float(self.dtype)
+  @staticmethod
+  def is_nan(self) -> bool: return(self != self)
 
 # register functions to move between devices
 for device in Device._buffers:
