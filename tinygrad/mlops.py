@@ -89,9 +89,27 @@ class Sum(Function):
 
 class Max(Function):
   __slots__ = "x", "ret"
-  def forward(self, x:LazyBuffer, new_shape:ShapeType) -> LazyBuffer:
-    self.x, self.ret = x, x.reduce_op(ReduceOps.MAX, new_shape)
+  def forward(self, x:LazyBuffer, new_shape:ShapeType, check_nan=True) -> LazyBuffer:
+    max_t = x.reduce_op(ReduceOps.MAX, new_shape) # STORE MAX
+    if check_nan:
+      zeros_t = x.binary_op(BinaryOps.SUB, x) # get zero tensor pt1
+      zeros_t = zeros_t.reduce_op(ReduceOps.SUM, new_shape) # get zero tensor pt2
+      nan_t = x.reduce_op(ReduceOps.SUM, new_shape) # nan or sum
+      nan_t = nan_t.binary_op(BinaryOps.MUL, zeros_t) # nan or zero
+      max_t = max_t.binary_op(BinaryOps.ADD, nan_t) # nan or zero
+    self.x, self.ret = x, max_t
     return self.ret
+
+  def backward(self, grad_output:LazyBuffer) -> LazyBuffer:
+    # 1s in locations where the max was chosen (can be two locations)
+    max_is_1s = self.x.binary_op(BinaryOps.CMPEQ, self.ret.expand(self.x.shape))
+
+    # sum of locations, averaged
+    div = max_is_1s.reduce_op(ReduceOps.SUM, grad_output.shape).expand(self.x.shape)
+    max_is_amount = max_is_1s.binary_op(BinaryOps.DIV, div)
+
+    grad_output_expanded = grad_output.expand(self.x.shape)
+    return max_is_amount.binary_op(BinaryOps.MUL, grad_output_expanded)
 
   def backward(self, grad_output:LazyBuffer) -> LazyBuffer:
     # 1s in locations where the max was chosen (can be two locations)
